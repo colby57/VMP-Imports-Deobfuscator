@@ -1,0 +1,77 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Headers">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Source">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Core\Process\ProcessAccessHelp.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Native\NativeWinApi.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\DeviceNameResolver\DeviceNameResolver.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\ApiReader\ApiReader.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Pe\PeParser.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Utils\StringConversion\StringConversion.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\Emulator\Emulator.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Vmp3Core.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="Core\ZydisWrapper\Wrapper.cpp">
+      <Filter>Source</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Core\Process\ProcessAccessHelp.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Native\NativeWinApi.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\DeviceNameResolver\DeviceNameResolver.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\ApiReader\ApiReader.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Utils\Thunks\Thunks.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Utils\StringConversion\StringConversion.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Pe\PeParser.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="Dependencies\argparse.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="Vmp3Core.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Emulator\Emulator.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\ZydisWrapper\Wrapper.h">
+      <Filter>Headers</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
