@@ -22,6 +22,28 @@
 using namespace blackbone;
 using namespace blackbone::pe;
 
+
+namespace
+{
+	std::uintptr_t FindModuleBaseByAddress(std::uintptr_t Address)
+	{
+		for (const auto& sModule : ProcessAccessHelp::moduleList)
+		{
+			const auto Base = static_cast<std::uintptr_t>(sModule.modBaseAddr);
+			const auto Size = static_cast<std::uintptr_t>(sModule.modBaseSize);
+
+			if (Address >= Base && Address < Base + Size)
+				return Base;
+		}
+
+		return 0;
+	}
+
+	bool ModuleListContains(const std::vector<std::uintptr_t>& Modules, std::uintptr_t ModuleBase)
+	{
+		return std::find(Modules.begin(), Modules.end(), ModuleBase) != Modules.end();
+	}
+}
 void FilterAddresses(std::uintptr_t pImageBase, std::uint32_t u32ImageSize, void* pPeBuffer, std::vector<std::uintptr_t>& vecPatternAddresses, std::vector<ptr_t>& vecAddressResults, std::uint32_t u32SectionBase, std::uint32_t u32SectionSize)
 {
 	std::uintptr_t pCalculatedAddress{};
@@ -306,40 +328,40 @@ std::vector<std::string> GetVmpSections(ProcessMemory& sMemory)
 {
 	// @note: @colby57: Calculate entropy for the given section
 	auto CalculateEntropy = [&](IMAGE_SECTION_HEADER Section)
-	{
-		const auto CalculatedVirtualAddress = (VMPCore::pImageLoadAddress + Section.VirtualAddress);
-		const auto BufferSize = Section.Misc.VirtualSize;
+		{
+			const auto CalculatedVirtualAddress = (VMPCore::pImageLoadAddress + Section.VirtualAddress);
+			const auto BufferSize = Section.Misc.VirtualSize;
 
-		double Entropy{};
+			double Entropy{};
 
-		// @note: @colby57: Read section data into a buffer
-		std::vector<std::uint8_t> vecBuffer(BufferSize);
-		sMemory.Read(CalculatedVirtualAddress, BufferSize, vecBuffer.data());
+			// @note: @colby57: Read section data into a buffer
+			std::vector<std::uint8_t> vecBuffer(BufferSize);
+			sMemory.Read(CalculatedVirtualAddress, BufferSize, vecBuffer.data());
 
-		std::map<std::uint8_t, double> mapByteProbabilities;
-		std::map<std::uint8_t, int> mapByteFrequencies;
+			std::map<std::uint8_t, double> mapByteProbabilities;
+			std::map<std::uint8_t, int> mapByteFrequencies;
 
-		// @note: @colby57: Calculate byte frequencies in the section
-		for (const auto& byte : vecBuffer)
-			mapByteFrequencies[byte]++;
+			// @note: @colby57: Calculate byte frequencies in the section
+			for (const auto& byte : vecBuffer)
+				mapByteFrequencies[byte]++;
 
-		// @note: @colby57: Calculate byte probabilities in the section
-		for (const auto& pair : mapByteFrequencies)
-			mapByteProbabilities[pair.first] = static_cast<double>(pair.second) / BufferSize;
+			// @note: @colby57: Calculate byte probabilities in the section
+			for (const auto& pair : mapByteFrequencies)
+				mapByteProbabilities[pair.first] = static_cast<double>(pair.second) / BufferSize;
 
-		// @note: @colby57: Calculate entropy using byte probabilities
-		for (const auto& pair : mapByteProbabilities)
-			Entropy -= pair.second * log2(pair.second);
+			// @note: @colby57: Calculate entropy using byte probabilities
+			for (const auto& pair : mapByteProbabilities)
+				Entropy -= pair.second * log2(pair.second);
 
-		// @note: @colby57: Clear and shrink vectors to free memory
-		vecBuffer.clear();
-		vecBuffer.shrink_to_fit();
+			// @note: @colby57: Clear and shrink vectors to free memory
+			vecBuffer.clear();
+			vecBuffer.shrink_to_fit();
 
-		mapByteFrequencies.clear();
-		mapByteProbabilities.clear();
+			mapByteFrequencies.clear();
+			mapByteProbabilities.clear();
 
-		return Entropy;
-	};
+			return Entropy;
+		};
 
 	double Entropy{};
 
@@ -366,6 +388,76 @@ std::vector<std::string> GetVmpSections(ProcessMemory& sMemory)
 
 	return vecVmpSections;
 }
+
+
+void CollectDirectIatCalls(std::uintptr_t pImageBase, std::size_t uImageSize, void* pPeBuffer, const std::vector<ptr_t>& vecAddressResults)
+{
+	if (pPeBuffer == nullptr)
+		return;
+
+	auto* pImage = reinterpret_cast<std::uint8_t*>(pPeBuffer);
+
+	for (const auto& Result : vecAddressResults)
+	{
+		const auto PatchAddress = static_cast<std::uintptr_t>(Result);
+
+		if (PatchAddress < pImageBase || PatchAddress + 6 > pImageBase + uImageSize)
+			continue;
+
+		const auto Offset = PatchAddress - pImageBase;
+		auto* pInstruction = pImage + Offset;
+
+		if (pInstruction[0] != 0xFF || pInstruction[1] != 0x15)
+			continue;
+
+		const auto Displacement = *reinterpret_cast<std::int32_t*>(pInstruction + 2);
+		const auto RipNext = PatchAddress + 6;
+		const auto SlotAddressSigned = static_cast<std::int64_t>(RipNext) + static_cast<std::int64_t>(Displacement);
+
+		if (SlotAddressSigned < 0)
+			continue;
+
+		const auto SlotAddress = static_cast<std::uintptr_t>(SlotAddressSigned);
+
+		if (SlotAddress < pImageBase || SlotAddress + sizeof(std::uintptr_t) > pImageBase + uImageSize)
+			continue;
+
+		const auto SlotOffset = SlotAddress - pImageBase;
+		const auto ApiAddress = *reinterpret_cast<std::uintptr_t*>(pImage + SlotOffset);
+
+		if (ApiAddress == 0)
+			continue;
+
+		bool is_suspected = false;
+
+		auto api = VMPCore::sApiReader.getApiByVirtualAddress(ApiAddress, &is_suspected);
+
+		if (api == 0)
+			continue;
+
+		const auto AlreadyExists = std::any_of(
+			VMPCore::vecPatchInfo.begin(),
+			VMPCore::vecPatchInfo.end(),
+			[PatchAddress](const VMPCore::S_IatPatchInfo& Info)
+			{
+				return Info.m_pPatchAddress == PatchAddress;
+			});
+
+		if (AlreadyExists)
+			continue;
+
+		VMPCore::S_IatPatchInfo PatchInfo{};
+		PatchInfo.m_iCallIatMode = VMPCore::CALL_IAT_COMMON;
+		PatchInfo.m_iIatEncryptMode = VMPCore::IAT_ENCRYPT_UNKNOWN;
+		PatchInfo.m_pPatchAddress = PatchAddress;
+		PatchInfo.m_pBaseModule = api->module->modBaseAddr;
+		PatchInfo.m_pApiAddress = ApiAddress;
+
+		VMPCore::vecPatchInfo.emplace_back(std::move(PatchInfo));
+		spdlog::info("Direct IAT call detected at 0x{0:x} targeting 0x{1:x} - {2}", PatchAddress, ApiAddress, api->name);
+	}
+}
+
 
 int main(int argc, char** argv)
 {
@@ -482,27 +574,32 @@ int main(int argc, char** argv)
 					std::find(sExcludeSections.begin(), sExcludeSections.end(), (char*)sSection.Name) == sExcludeSections.end())
 				{
 					// @note: @colby57: Search for a specific pattern in the target section.
-					PatternSearch sPattern({ 0xE8,'?','?','?','?' });
-					std::vector<ptr_t> vecResults{};
-
-					if (sPattern.SearchRemote(
-						sProcess,
-						'?',
-						sTargetModule->baseAddress + sSection.VirtualAddress,
-						sSection.Misc.VirtualSize,
-						vecResults,
-						SIZE_MAX) != 0)
 					{
-						// @note: @colby57: Filter addresses based on certain criteria.
-						FilterAddresses(
-							sTargetModule->baseAddress,
-							sTargetModule->size,
-							pBuffer,
-							VMPCore::vecPatternAddressList,
+						PatternSearch sPattern({ 0xE8,'?','?','?','?' });
+						std::vector<ptr_t> vecResults{};
+
+						if (sPattern.SearchRemote(
+							sProcess,
+							'?',
+							sTargetModule->baseAddress + sSection.VirtualAddress,
+							sSection.Misc.VirtualSize,
 							vecResults,
-							sSection.VirtualAddress,
-							sSection.Misc.VirtualSize);
+							SIZE_MAX) != 0)
+						{
+							// @note: @colby57: Filter addresses based on certain criteria.
+							FilterAddresses(
+								sTargetModule->baseAddress,
+								sTargetModule->size,
+								pBuffer,
+								VMPCore::vecPatternAddressList,
+								vecResults,
+								sSection.VirtualAddress,
+								sSection.Misc.VirtualSize);
+						}
 					}
+
+
+
 				}
 			}
 
@@ -527,7 +624,7 @@ int main(int argc, char** argv)
 			}
 
 			// @note: @colby57: Retrieve module information from the current and target processes.
-			if (!ProcessAccessHelp::getProcessModules(GetCurrentProcess(), ProcessAccessHelp::ownModuleList) || 
+			if (!ProcessAccessHelp::getProcessModules(GetCurrentProcess(), ProcessAccessHelp::ownModuleList) ||
 				!ProcessAccessHelp::getProcessModules(ProcessAccessHelp::hProcess, ProcessAccessHelp::moduleList))
 			{
 				spdlog::error("Cannot get process modules\n");
@@ -544,6 +641,47 @@ int main(int argc, char** argv)
 				VMPCore::pCurrentPatternAddress = Address;
 				Emulator::Start(VMPCore::pCurrentPatternAddress);
 			}
+
+
+
+			// @note: @baier233: Locate the unencrypted IAT calls, add them to the new IAT table, and subsequently redirect the addresses of the IAT calls to the new IAT table.
+			sProcess.Attach(iProcessId);
+
+			for (auto sSection : sPeImage.sections())
+			{
+				if ((sSection.Characteristics & IMAGE_SCN_MEM_EXECUTE) &&
+					std::find(sExcludeSections.begin(), sExcludeSections.end(), (char*)sSection.Name) == sExcludeSections.end())
+				{
+
+					{
+
+						PatternSearch sPattern({ 0XFF,0X15,'?','?','?','?' });
+						std::vector<ptr_t> vecDirectCallResults{};
+
+						if (sPattern.SearchRemote(
+							sProcess,
+							'?',
+							sTargetModule->baseAddress + sSection.VirtualAddress,
+							sSection.Misc.VirtualSize,
+							vecDirectCallResults,
+							SIZE_MAX) != 0)
+						{
+
+							CollectDirectIatCalls(sTargetModule->baseAddress,
+								sTargetModule->size,
+								pBuffer,
+								vecDirectCallResults);
+						}
+					}
+
+
+
+				}
+			}
+
+			sProcess.Detach();
+
+
 
 			// @note: @colby57: Retrieve information about IAT modules, import module API lists, and fix IAT in memory.
 			VMPCore::ParseModules();
