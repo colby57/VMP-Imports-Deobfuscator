@@ -18,7 +18,8 @@ namespace VMPCore
 		CALL_IAT_UNKNOWN = 0,
 		CALL_IAT_COMMON,
 		CALL_IAT_JMP,
-		CALL_IAT_MOV_REG
+		CALL_IAT_MOV_REG,
+		CALL_IAT_MOV_REFERENCE
 	};
 
 	enum eIatEncryptMode

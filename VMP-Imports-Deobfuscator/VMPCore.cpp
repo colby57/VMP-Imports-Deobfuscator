@@ -214,7 +214,7 @@ static void VMPCore::ApplyPatches()
 				sIatPatchInfo.m_iRegIndex))
 			{
 				// @note: @colby57: Check if the assembled code is valid.
-				if (iCodeLen == 5 || iCodeLen == 6)
+				if (iCodeLen == 5 || iCodeLen == 6 || (iCallIatMode == VMPCore::CALL_IAT_MOV_REFERENCE && iCodeLen == 7))
 				{
 					// @note: @colby57: Write the assembled code to the patch address.
 					if (!WriteProcessMemory(ProcessAccessHelp::hProcess, reinterpret_cast<void*>(sIatPatchInfo.m_pPatchAddress), vecCode.data(), iCodeLen, &WrittedBytes))
@@ -387,6 +387,87 @@ std::vector<std::string> GetVmpSections(ProcessMemory& sMemory)
 	}
 
 	return vecVmpSections;
+}
+
+void CollectMovIatReferences(std::uintptr_t pImageBase, std::size_t uImageSize, void* pPeBuffer, const std::vector<ptr_t>& vecAddressResults)
+{
+	if (pPeBuffer == nullptr)
+		return;
+
+	auto* pImage = reinterpret_cast<std::uint8_t*>(pPeBuffer);
+
+	for (const auto& Result : vecAddressResults)
+	{
+		const auto PatchAddress = static_cast<std::uintptr_t>(Result);
+
+		const auto Offset = PatchAddress - pImageBase;
+		auto* pInstruction = pImage + Offset;
+
+		if ((pInstruction[0] != 0x48 && pInstruction[0] != 0x4C) || pInstruction[1] != 0x8B)
+			continue;
+
+		S_DisasmWrapper sDisasm{};
+		if (!ZydisWrapper::Disasm64(sDisasm, reinterpret_cast<std::uintptr_t>(pInstruction), 7))
+			continue;
+
+
+		if (sDisasm.m_sInstruction.mnemonic != ZYDIS_MNEMONIC_MOV || sDisasm.m_sInstruction.operand_count < 2)
+			continue;
+
+		const auto& op = sDisasm.m_sOperands[0];
+		if (op.type != ZYDIS_OPERAND_TYPE_REGISTER /*|| op.mem.base != ZYDIS_REGISTER_CS*/)
+			continue;
+
+		if (sDisasm.m_sOperands[1].type != ZYDIS_OPERAND_TYPE_MEMORY)
+			continue;
+
+		if (!sDisasm.m_sOperands[1].mem.disp.has_displacement)
+			continue;
+
+		if (sDisasm.m_sOperands[1].mem.base != ZYDIS_REGISTER_RIP)
+			continue;
+
+		const std::uintptr_t RipNext = PatchAddress + sDisasm.m_sInstruction.length;
+		const std::int64_t Displacement = sDisasm.m_sOperands[1].mem.disp.value;
+
+
+		const auto SlotAddress = static_cast<std::uintptr_t>(
+			static_cast<std::int64_t>(RipNext) + Displacement
+			);
+
+		if (SlotAddress < pImageBase || SlotAddress + sizeof(std::uintptr_t) > pImageBase + uImageSize)
+			continue;
+
+		const auto SlotOffset = SlotAddress - pImageBase;
+
+
+		const auto ApiAddress = *reinterpret_cast<std::uintptr_t*>(pImage + SlotOffset);
+
+		if (ApiAddress == 0)
+			continue;
+
+		bool is_suspected = false;
+		auto api = VMPCore::sApiReader.getApiByVirtualAddress(ApiAddress, &is_suspected);
+
+		if (api == 0)
+			continue;
+
+		if (api->module->modBaseAddr == pImageBase || api->module->modBaseAddr == reinterpret_cast<std::uintptr_t>(pImage))
+			continue;
+
+
+		VMPCore::S_IatPatchInfo PatchInfo{};
+
+		PatchInfo.m_iCallIatMode = VMPCore::CALL_IAT_MOV_REFERENCE;
+		PatchInfo.m_pPatchAddress = PatchAddress;
+		PatchInfo.m_pBaseModule = api->module->modBaseAddr;
+		PatchInfo.m_pApiAddress = ApiAddress;
+
+		PatchInfo.m_iRegIndex = op.reg.value;
+
+		VMPCore::vecPatchInfo.emplace_back(std::move(PatchInfo));
+		spdlog::info("MOV IAT reference detected at 0x{0:x} targeting 0x{1:x} - {2}", PatchAddress, ApiAddress, api->name);
+	}
 }
 
 
@@ -673,7 +754,44 @@ int main(int argc, char** argv)
 								vecDirectCallResults);
 						}
 					}
+					MessageBox(0, 0, 0, 0);
+					{
+						PatternSearch sPattern48({ 0X48, 0X8B, '?', '?', '?', '?', '?' });
+						std::vector<ptr_t> vecMovResults{};
 
+						if (sPattern48.SearchRemote(
+							sProcess,
+							'?',
+							sTargetModule->baseAddress + sSection.VirtualAddress,
+							sSection.Misc.VirtualSize,
+							vecMovResults,
+							SIZE_MAX) != 0)
+						{
+							CollectMovIatReferences(
+								sTargetModule->baseAddress,
+								sTargetModule->size,
+								pBuffer,
+								vecMovResults);
+						}
+
+						PatternSearch sPattern4C({ 0X4C, 0X8B, '?', '?', '?', '?', '?' });
+						std::vector<ptr_t> vecMovResults4C{};
+
+						if (sPattern4C.SearchRemote(
+							sProcess,
+							'?',
+							sTargetModule->baseAddress + sSection.VirtualAddress,
+							sSection.Misc.VirtualSize,
+							vecMovResults4C,
+							SIZE_MAX) != 0)
+						{
+							CollectMovIatReferences(
+								sTargetModule->baseAddress,
+								sTargetModule->size,
+								pBuffer,
+								vecMovResults4C);
+						}
+					}
 
 
 				}
