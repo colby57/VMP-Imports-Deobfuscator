@@ -516,6 +516,10 @@ void CollectDirectIatCalls(std::uintptr_t pImageBase, std::size_t uImageSize, vo
 		if (api == 0)
 			continue;
 
+
+		if (api->module->modBaseAddr == pImageBase || api->module->modBaseAddr == reinterpret_cast<std::uintptr_t>(pImage))
+			continue;
+
 		const auto AlreadyExists = std::any_of(
 			VMPCore::vecPatchInfo.begin(),
 			VMPCore::vecPatchInfo.end(),
