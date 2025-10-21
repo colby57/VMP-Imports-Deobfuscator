@@ -19,5 +19,6 @@ namespace ZydisWrapper
 	void AppendInstruction(const ZydisEncoderRequest* pEncoderRequest, ZyanU8** Buffer, ZyanUSize* BufferLength);
 	
 	bool Disasm(S_DisasmWrapper& sDisasm, std::uintptr_t Data, int Length);
+	bool Disasm64(S_DisasmWrapper& sDisasm, std::uintptr_t Data, int Length);
 	std::uintptr_t CalculateAbsoluteAddr(S_DisasmWrapper& sDisasm, std::size_t nOperandSize);
 }
