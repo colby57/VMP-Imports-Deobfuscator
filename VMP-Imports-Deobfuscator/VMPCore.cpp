@@ -758,7 +758,8 @@ int main(int argc, char** argv)
 								vecDirectCallResults);
 						}
 					}
-					MessageBox(0, 0, 0, 0);
+
+
 					{
 						PatternSearch sPattern48({ 0X48, 0X8B, '?', '?', '?', '?', '?' });
 						std::vector<ptr_t> vecMovResults{};
