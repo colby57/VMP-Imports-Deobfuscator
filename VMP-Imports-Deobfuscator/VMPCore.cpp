@@ -214,7 +214,9 @@ static void VMPCore::ApplyPatches()
 				sIatPatchInfo.m_iRegIndex))
 			{
 				// @note: @colby57: Check if the assembled code is valid.
-				if (iCodeLen == 5 || iCodeLen == 6 || (iCallIatMode == VMPCore::CALL_IAT_MOV_REFERENCE && iCodeLen == 7))
+
+														// @note: @baier233: Processing specifically for the mov instruction.
+				if (iCodeLen == 5 || iCodeLen == 6 || ((iCallIatMode == CALL_IAT_MOV_REG || iCallIatMode == VMPCore::CALL_IAT_MOV_REFERENCE) && iCodeLen == 7))
 				{
 					// @note: @colby57: Write the assembled code to the patch address.
 					if (!WriteProcessMemory(ProcessAccessHelp::hProcess, reinterpret_cast<void*>(sIatPatchInfo.m_pPatchAddress), vecCode.data(), iCodeLen, &WrittedBytes))
