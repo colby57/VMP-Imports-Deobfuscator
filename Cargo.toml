@@ -1,0 +1,25 @@
+[package]
+name = "vid"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+description = "A Windows tool for reconstructing protected PE imports"
+license = "MIT"
+
+[dependencies]
+clap = { version = "4.6.6", features = ["derive"] }
+iced-x86 = { version = "1.21.0", default-features = false, features = [
+    "std",
+    "decoder",
+    "instr_info",
+    "code_asm",
+] }
+spdlog-rs = "0.5.3"
+unicorn-engine = { version = "2.1.5", default-features = false, features = ["arch_x86"] }
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }

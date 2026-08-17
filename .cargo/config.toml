@@ -1,0 +1,2 @@
+[env]
+CMAKE_TOOLCHAIN_FILE = { value = ".cargo/unicorn-windows-static.cmake", relative = true }
