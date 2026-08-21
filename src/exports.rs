@@ -38,7 +38,13 @@ impl ExportIndex {
     pub fn read(process: &Process, modules: &[Module]) -> Result<Self, ExportError> {
         let mut definitions = Vec::new();
         for module in modules {
-            definitions.extend(read_module(process, module)?);
+            match read_module(process, module) {
+                Ok(module_definitions) => definitions.extend(module_definitions),
+                Err(error) if error.is_invalid_pe_image() => {
+                    spdlog::warn!("skipping {error}");
+                }
+                Err(error) => return Err(error),
+            }
         }
         Ok(Self::from_definitions(definitions))
     }
@@ -392,6 +398,17 @@ impl fmt::Display for ExportError {
                 write!(formatter, "export address overflow in `{module_name}`")
             }
         }
+    }
+}
+
+impl ExportError {
+    fn is_invalid_pe_image(&self) -> bool {
+        matches!(
+            self,
+            Self::InvalidImage { .. }
+                | Self::InvalidOptionalHeader { .. }
+                | Self::UnsupportedOptionalHeader { .. }
+        )
     }
 }
 
